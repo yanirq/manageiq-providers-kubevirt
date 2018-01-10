@@ -1,0 +1,189 @@
+= VirtualMachine Templates
+
+VirtualMachine templates are openshift templates (https://docs.openshift.org/latest/dev_guide/templates.html) +
+that describe VirtualMachine specifications which produce the following template objects: +
+**One** OfflineVirtualMachine and PersistentVolumeClaim. +
+The following document describes the process of creating a Virtual machine template which will be managed by ManageIQ.
+
+== Uploading a Template
+
+If you have a YAML file that defines a VirtualMachine template, you can upload the template to an Openshift cluster using the CLI. 
+To upload a template to your current project’s template library, pass the YAML file with the following command: +
+
+----
+$ oc create -f <filename>
+----
+
+== Modifying an Uploaded Template
+You can edit a template that has already been uploaded to your project by using the following command: +
+
+----
+$ oc edit template <template>
+----
+
+Writing Templates
+You can define new VirtualMachine templates to make it easy to recreate all relevant objects (offlineVirtualMachine and PersistentVolumeClaim). The template will define the objects it creates along with some metadata to guide the creation of those objects.
+
+[source,yaml]
+----
+apiVersion: kubevirt.io/v1alpha1
+kind: Template
+metadata:
+  name: RHEL-7 ❶
+objects:
+- apiVersion: kubevirt.io/v1alpha1
+  kind: offlineVirtualMachine ❷
+  metadata:
+    name: rhel-7-${NAME} ❸
+  spec:
+    template:
+      metadata:
+      labels:
+        my: label
+      spec:
+        domain:
+          resources: ❹
+            memory: ${MEMORY} 
+            cpu: ${CPU}
+          devices:
+      disks: ➎
+        name: disk0
+        volumeName: mypvc 
+      volumes: ➏
+         name: mypvc
+         presistentVolumeClaim:
+      claimName: rhel-7-pvc-${NAME}
+- apiVersion: kubevirt.io/v1alpha1
+  kind: presistentVolumeClaim ❼
+  metadata:
+    name: rhel-7-pvc-${NAME} ❽
+labels: ...       
+parameters: ...
+
+----
+ 
+❶ The unique name of the template. +
+
+❷ The OfflineVirtualMachine Object. This object must appear only once in the template. +
+
+❸ OfflineVirtualMachine’s name. +
+
+❹ OfflineVirtualMachine’s resources, currently includes only memory and cpu. +
+   Cpu is the number of cpu cores the Virtual Machine requires. +
+   Memory is the minimal amount the Virtual Machine requires. +
+   These attributes are represented as parameters that will either be filled out by the user Or receive default values. +
+   
+➎ Disk contains a “volumeName” attribute, which links it to a volume +
+
+➏ Specification of a disk’s volume from the disks section. +
+        It contains a persistent volume claim.  (more about link:https://kubernetes.io/docs/concepts/storage/persistent-volumes/[Persistent Volume Claims] ) +
+        
+❼ The PersistenVolumeClaim Object that accompanies the OfflineVirtualMachine Object. +
+
+❽ PersistenVolumeClaim’s name. +
+
+=== Labels
+
+Labels will be presented on every OCP template object in order for ManageIQ to recognize it as a KubeVirt template.
+The labels specified in the template are applied to every object that is generated from the template.
+
+[source,yaml]
+----
+labels:
+  # vm-template label applied to all objects created from this template
+  template: “miq.github.io/kubvirt/vm-template”
+----
+
+There is also the ability to add labels in the template from the command line:
+
+----
+$ oc process -f <filename> -l name=“miq.github.io/kubvirt/vm-template”
+----
+
+=== Parameters
+
+Parameters allow a value to be supplied by the user or generated when the template is instantiated. +
+Then, that value is substituted wherever the parameter is referenced. +
+The following parameters will be used for the offlineVirtualMachine name (and as a part of the persistent volume claim names) +
+Default values will be provided for memory and cpu, which will be used if the user does not supply a different value.
+
+[source,yaml]
+----
+parameters:
+- description: Name for the new VM     
+  name: NAME   
+- name: MEMORY
+  description: Amount of memory in MB
+  value: 512Mi  
+- name: CPU
+  description: Amount of cores
+  value: 4    
+----
+
+=== Creating VirtualMachineTemplate Objects using the Web Console
+TBD  (add screenshots)
+
+=== Generating the VirtualMachineTemplate Objects from CLI 
+The list of parameters that you can override are listed under  Parameters.
+You can list them with the CLI by using the following command and specifying the file to be used:
+----
+  $ oc process --parameters -f <filename>
+----
+
+Or create objects from a template by processing the template and piping the output to oc create:
+
+----
+  $ oc process --parameters -f <filename> | oc create -f -
+----
+
+
+=== Full VirtualMachine Template example
+
+[source,yaml]
+----
+apiVersion: kubevirt.io/v1alpha1
+kind: Template 
+metadata:
+  name: RHEL-7  #This will define the template’s name
+  # name: Microsoft-Windows-2012r1
+objects:
+- apiVersion: kubevirt.io/v1alpha1
+  kind: offlineVirtualMachine
+  metadata:
+    name: rhel-7-${NAME}
+  spec:
+    template:
+      metadata:
+      labels:
+        my: label
+      spec:
+        domain:
+          resources:
+            memory: ${MEMORY}
+            cpu: ${CPU}
+          devices:
+      disks:
+        name: disk0
+        volumeName: mypvc 
+      volumes:
+         name: mypvc
+         presistentVolumeClaim:
+      claimName: rhel-7-pvc-${NAME}
+- apiVersion: kubevirt.io/v1alpha1
+  kind: presistentVolumeClaim
+  metadata:
+    name: rhel-7-pvc-${NAME}
+labels:
+  # vm-template label applied to all objects created from this template
+  template: “miq.github.io/kubvirt/vm-template”           
+parameters:
+- description: Name for the new VM     
+  name: NAME   
+- description: Amount of memory in MB
+  name: MEMORY
+ 
+  value: 512Mi  #default
+- description: Amount of cores
+  name: CPU
+  value: 4    #default
+----
